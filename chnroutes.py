@@ -152,6 +152,54 @@ def generate_win(metric):
     print "For pptp on windows only, run vpnup.bat before dialing to vpn," \
           "and run vpndown.bat after disconnected from the vpn."
 
+def generate_pac(metric):
+    results = fetch_ip_data()
+
+    proxy_pac = open("./proxy.pac", "wb")
+
+    proxy_pac.write('PROXY = "SOCKS5 127.0.0.1:1984";\n')
+    proxy_pac.write('CHINESE_SUBNETS = [\n')
+
+    for ip, mask, _ in results:
+        proxy_pac.write('    ["%s", "%s"],\n' % (ip, mask))
+    proxy_pac.write("];\n\n")
+
+    logic = textwrap.dedent("""\
+    function inChina(host)
+    {
+        var ip = dnsResolve(host);
+        for (var i = 0; i < CHINESE_SUBNETS.length; i++) {
+            var subnet = CHINESE_SUBNETS[i][0];
+            var netmask = CHINESE_SUBNETS[i][1];
+            if (isInNet(ip, subnet, netmask)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function FindProxyForURL(url, host)
+    {
+        if (inChina(host)) {
+            return "DIRECT";
+        }
+        else {
+            return PROXY;
+        }
+    }
+
+    """)
+
+    proxy_pac.write(logic)
+    proxy_pac.close()
+
+    print 'The first line of proxy.pac - TYPE "ip:port"'
+    print 'TYPE can be PROXY (HTTP), SOCKS (Socks 4), or SOCKS5'
+    print 'The default value is PROXY = "SOCKS5 127.0.0.1:1984", PLEASE CHANGE it.'
+    print ''
+    print "Note: Some browser doesn't support Socks 5 in PAC, although they may support Socks 5 in the settings."
+    print 'Tip: You can use "file://path" as the URL of the local file.'
+
 def generate_android(metric):
     results = fetch_ip_data()
     
@@ -235,7 +283,7 @@ if __name__=='__main__':
                         default='openvpn',
                         nargs='?',
                         help="Target platforms, it can be openvpn, mac, linux," 
-                        "win, android. openvpn by default.")
+                        "win, android and pac. openvpn by default.")
     parser.add_argument('-m','--metric',
                         dest='metric',
                         default=5,
@@ -255,6 +303,8 @@ if __name__=='__main__':
         generate_win(args.metric)
     elif args.platform.lower() == 'android':
         generate_android(args.metric)
+    elif args.platform.lower() == 'pac':
+        generate_pac(args.metric)
     else:
         print>>sys.stderr, "Platform %s is not supported."%args.platform
         exit(1)
